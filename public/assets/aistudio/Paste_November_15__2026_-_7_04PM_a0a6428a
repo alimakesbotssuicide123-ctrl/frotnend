@@ -1,0 +1,2410 @@
+Farmer Questionnaire & Decision Logic Specification
+
+A complete question-flow, evidence-fetching, calculation, backend, and live-progress contract for crop-rotation assessment  
+
+Specification version: 1.1 — Simple Mode default / concise first-run flow
+
+Prepared: 15 November 2026
+
+Parent product specification: Field Shift Master Product, UX, Intelligence and Engineering Plan v8
+
+SCOPE: Questionnaire questions, conditional logic, data retrieval, calculations, backend execution and truthful live progress. Rotation Planner page design is intentionally excluded.
+
+
+FIELD SHIFT  •  IMPLEMENTATION SPECIFICATION  •  
+
+FIELD SHIFT   /   QUESTIONNAIRE & DECISION LOGIC
+
+Document purpose and scope boundary
+
+This document specifies the farmer-facing questions and the complete logic that turns the answers into a validated, evidence-backed input package for rotation assessment. It covers the questionnaire frontend, conditional questions, location and environmental API retrieval, input provenance, calculations, constraints, scoring inputs, backend processing, persistence, loading/progress events, failure handling and acceptance tests.
+
+This is not a specification of the Crop Rotation Planner results page, rotation cards, comparison page, rotation timeline, or the wider Rotation Planner interface. Those are outside this document. The only page-level handoff described here is the interface contract that passes the verified questionnaire snapshot to the existing Crop Rotation Planner route when the farmer chooses to continue.
+
+The phrase “use APIs to fetch information” is interpreted as permission to use external data APIs after the farmer provides or confirms the relevant farm/field location and accepts the applicable data-sharing notice. The farmer's precise farm location must not be guessed from an IP address.
+
+Source and implementation status
+
+This specification is grounded in the supplied Field Shift v8 master plan, especially its crop-planner wizard, core and optional questions, review stage, real loading stages, scientific-integrity rules, API/job contracts, source registry and rotation-engine requirements. It expands those requirements into an implementable questionnaire and backend contract.
+
+The master plan's retained code-audit notes say that the supplied implementation snapshot visibly fetches NASA POWER monthly climate and Open-Meteo current weather, while other satellite/data products are listed in the interface without verified active integrations. It also identifies timer-driven fake analysis progress, localStorage-based persistence and the absence of a durable job queue/database in the reviewed snapshot. Treat that as the status of the supplied audit snapshot, not proof of the live deployment today. Before implementation, inspect the current repository and run real connector smoke tests. Never show a source as connected merely because its name is mentioned in code or documentation.
+
+This specification distinguishes:
+
+Existing/audit-observed: explicitly identified as active in the supplied code-audit note.
+
+Planned/needs integration: required or proposed by the product plan but not verified as active in that audit snapshot.
+
+Farmer-provided: entered by the farmer and not independently measured.
+
+Farmer-confirmed suggestion: a value proposed from a dataset and accepted or corrected by the farmer.
+
+Unavailable/failed: not retrieved, not supported, or not suitable for this field/run.
+
+No implementation may convert a planned integration into a false “live” status.
+
+Binding Override — Simple Mode Is the Default
+
+HIGHEST-PRIORITY QUESTIONNAIRE RULE
+
+This section overrides any earlier wording that could be interpreted as showing the full question catalogue during normal first-time use. The detailed question catalogue in Section 4 is a reusable library of conditional and advanced questions. It is not the default onboarding checklist.
+
+Required default experience
+
+Launch every new questionnaire in Simple Mode. Simple is selected by default; Advanced is an explicit user choice.
+
+The ordinary first-run path contains four short question steps at most. Saved farm/field data and already-known answers are prefilled and skipped rather than repeated.
+
+Ask only for field identity/location, recent crop sequence, broad water access and the farmer’s main goal.
+
+Use sensible, disclosed defaults for secondary settings. Do not ask soil chemistry, irrigation volumes, detailed management, yield, cost or risk questions before the first pass.
+
+Allow “Not sure” for non-blocking information. Missing facts reduce coverage/confidence or make only the affected calculation unavailable; they are never replaced with ideal values.
+
+At the end of the short flow, ask whether the farmer wants a few extra questions for greater accuracy. Continuing without extra questions must always be available.
+
+Four-step Simple Mode flow
+
+STEP 1 — FARM, FIELD AND LOCATION. Select an existing farm and field. If none exists, create a simple field record, enter an optional label, and confirm a location using place search or a map pin. Reuse saved location. Drawing a field polygon is optional and must not block a location-only first pass.
+
+STEP 2 — RECENT CROPS. Ask what has grown in the field over the last three growing seasons, or the seasons the farmer remembers. Allow repeatable crop entries, approximate season/year, “I don’t remember / Not sure”, and separate Fallow and Cover Crop choices. Do not request detailed dates or yields in Simple Mode.
+
+STEP 3 — WATER ACCESS. Ask Rain-fed / Irrigated / Both / Not sure. If Irrigated or Both and reliability materially affects candidate feasibility, ask at most one short follow-up: Reliable / Seasonal or limited / Variable / Not sure. Do not ask irrigation method, frequency, litres, flow rate or water chemistry initially.
+
+STEP 4 — MAIN GOAL. Ask what matters most: Balanced plan (preselected default) / Save water / Improve soil / Climate resilience / Crop suitability / Productivity potential. The default is visible and editable, never hidden.
+
+Disclosed defaults — not additional mandatory questions
+
+Planning horizon: default to three growing seasons for a first-pass annual-crop assessment. Show it in the compact review and let the farmer change it. This is not a forced rotation length: crop duration, perennial status and feasibility still govern the engine.
+
+Soil: use verified available evidence as a clearly labelled dataset estimate, or leave it unknown. Do not ask texture, pH, salinity, nutrients or laboratory-test questions in the initial flow.
+
+Boundary: reuse a saved polygon where available. Otherwise a confirmed point is enough for a location-only first pass. Offer boundary drawing later as an accuracy improvement.
+
+Crop requirements/exclusions: assume none only when the farmer accepts that disclosed default. Otherwise ask during optional refinement.
+
+End-of-flow accuracy choice
+
+After the four steps, show a compact summary and ask: “Would you like to improve the accuracy with a few extra details?” Provide two choices: “Use my current information and continue” (primary, always available) and “Answer a few optional questions”. Do not use warning language that makes the farmer feel the basic answers are inadequate.
+
+If the farmer opts in, rank only follow-ups relevant to the selected field and likely to change feasibility, candidate eligibility, water assessment or ranking.
+
+Ask one question at a time, explain why it matters, show “Skip for now” and “Finish and continue”, and let the farmer stop at any time.
+
+Ask no more than three high-impact follow-ups in the first refinement pass. “More accuracy options” is a separate secondary route for farmers who explicitly want more detail.
+
+Typical candidates: soil texture/test, required or excluded crops, irrigation reliability/method, known crop-specific pest/disease constraints, growing-season frequency/planting windows, and relevant management practices. Ask yield/economic questions only if a validated model actually uses them.
+
+Do not repeat information already saved, supplied, retrieved or confirmed. Choose questions by expected decision value: ask only when the answer could materially reduce uncertainty, change a feasibility decision or alter the ranking.
+
+Meaning of “Required” in Section 4
+
+A catalogue item marked “Required: Yes” is required only inside the branch or calculation that invokes it. It does not make the question part of default Simple Mode. If a missing item is genuinely necessary for one calculation, ask one concise clarification with a reason or omit that calculation and explain the limitation; never force completion of the entire catalogue.
+
+Copy-paste prompt for the implementation builder
+
+IMPORTANT QUESTIONNAIRE SIMPLIFICATION OVERRIDE — FIELD SHIFT
+
+Redesign the farmer questionnaire so SIMPLE MODE is the default. The detailed catalogue is an advanced/conditional question bank, not a checklist shown to every farmer.
+
+Normal first use must have at most four short steps: (1) select/create farm and field, confirm location; (2) recent crops over up to three growing seasons; (3) water access: rain-fed, irrigated, both or unknown; (4) main goal, with Balanced plan preselected.
+
+Prefill saved records and skip questions already answered. A map pin is enough for a location-only first pass; polygon drawing is optional. Ask only one irrigation-reliability follow-up when it materially changes feasibility.
+
+Default the first-pass annual-crop horizon to three growing seasons and show it in review for editing. Do not force all rotations to three seasons. Do not ask soil tests, pH, salinity, nutrients, irrigation volume/method, management, yield, cost or risk questions in the initial flow.
+
+After the four steps, ask whether the farmer wants greater accuracy. Always offer “Use my current information and continue”. If the farmer opts in, ask at most three high-impact, relevant follow-ups in the first pass, one at a time, with a reason and Skip/Finish options. More detail is a separate Advanced route.
+
+“Required” in the question library applies only to a selected branch or calculation; it never expands the default flow. Missing data must remain unknown, reduce confidence/coverage or make only the affected calculation unavailable. Never invent values.
+
+Simple is selected by default. Progress counts only the simple steps (e.g. Step 2 of 4), not the full library. After results, offer Improve accuracy as a new immutable input snapshot and assessment version.
+
+Acceptance: new users see no more than four core steps before the accuracy choice; saved data is not repeated; optional questions can be declined; Simple is default; Advanced is opt-in; and no calculation or progress claim is fabricated.
+
+1. Product contract: what the questions must achieve
+
+The questionnaire must gather enough reliable, field-specific information to evaluate crop-sequence options without forcing the farmer to complete a long technical survey. It should collect the minimum decision-critical facts, automatically request relevant external evidence, ask follow-up questions only when needed, and preserve unknowns honestly.
+
+The questionnaire is successful when it creates a versioned, reviewable input snapshot containing:
+
+1. the selected farm and the exact field being assessed;
+
+2. a confirmed location point and, where available, the field boundary polygon;
+
+3. farmer-known soil information and any dated laboratory results;
+
+4. water access and irrigation information, clearly separating a routine from actual irrigation events;
+
+5. recent crop history and any current crop that is genuinely planted;
+
+6. the intended planning horizon and cropping intensity;
+
+7. required and excluded crops, operational limits and relevant management practices;
+
+8. the farmer's normalized priorities and risk preference;
+
+9. external observations/estimates that were successfully retrieved, including date, units, source and spatial/temporal resolution;
+
+10. explicit missing-data, quality and uncertainty flags;
+
+11. the farmer's final review/confirmation and consent choices.
+
+The system must never require every optional answer before it can save a draft. It must never invent missing soil, irrigation, crop-history or yield data to make the form feel complete.
+
+1.1 Core rules
+
+One decision per question screen. A complex topic may contain a short sequence of related questions, but do not place 15 unrelated inputs on one page.
+
+Progressive disclosure. Ask the core questions first. Reveal advanced inputs only when the farmer chooses more accuracy or an answer makes them relevant.
+
+Unknown is a valid answer. Use “I don't know”, “Not measured” or “Skip for now” where the question is optional. Keep unknown, not measured, not applicable and not answered as distinct states.
+
+Prefill is a suggestion, not a fact. A location-derived climate or soil value must be marked with its source and offered for confirmation where farmer confirmation is required.
+
+Separate farm from field. A farm can contain different fields. Soil, crop history, drainage, irrigation and geometry are field-specific unless the farmer explicitly confirms a shared practice.
+
+Separate point from polygon. A map pin identifies a location. A field polygon identifies the land area. One must not silently substitute for the other.
+
+Separate plan from event. A planned irrigation routine is not proof that water was applied. A suggested crop is not proof that it is currently planted.
+
+Separate match from confidence. Match/suitability describes how well the plan fits the inputs. Confidence describes how strong and complete the evidence is.
+
+Hard constraints precede preferences. Sliders may change ranking, but must never override a genuine agronomic or feasibility constraint.
+
+Same inputs, same engine version, same ranking. Keep calculations deterministic and explain tie-breaking.
+
+Every remote call and calculation must be real. UI labels, timers and source badges are derived from backend events and results, never staged animations.
+
+2. Questionnaire frontend: glassy, transparent, farmer-friendly UI
+
+The design must belong to Field Shift's forest-night visual system. The questionnaire is a working tool, not a marketing page and not a decorative AI chat window.
+
+2.1 Global visual tokens
+
+Use the shared v8 tokens as the source of truth:
+
+Token
+
+Value
+
+Use in questionnaire
+
+Canvas
+
+#07130C
+
+Full-page dark forest background
+
+Solid surface
+
+#102319
+
+Empty-space fallback, text-heavy content
+
+Raised surface
+
+#183324
+
+Selected answer row / active step
+
+Strong glass
+
+rgba(7, 20, 12, 0.88)
+
+Dense answer panels, review tables, side inspector
+
+Default glass
+
+rgba(8, 23, 14, 0.78)
+
+Main question card over a quiet background
+
+Light glass
+
+rgba(8, 24, 14, 0.64)
+
+Sparse location/evidence overlay only
+
+Dialog glass
+
+rgba(6, 17, 10, 0.96)
+
+Confirmations and consent dialogs
+
+Subtle border
+
+rgba(226, 241, 228, 0.12)
+
+Default glass edge
+
+Selected border
+
+rgba(128, 196, 142, 0.78)
+
+Selected answer / active choice
+
+Primary text
+
+#F1F6EF
+
+Main content
+
+Secondary text
+
+#C0CEC2
+
+Instructions and explanations
+
+Muted text
+
+#9BA99C
+
+Non-critical metadata only
+
+Leaf accent
+
+#83C58E
+
+Primary action and active progress
+
+Water accent
+
+#73CAD0
+
+Water/weather evidence labels only
+
+Caution
+
+#E6B86A
+
+Missing/weak/needs-confirmation states
+
+Critical
+
+#E97971
+
+Hard validation error / failed required source
+
+Control radius
+
+10px
+
+Buttons, chips and inputs
+
+Card radius
+
+16px
+
+Standard question/evidence cards
+
+Feature radius
+
+22px
+
+Main questionnaire container / location feature
+
+Default glass blur
+
+14px
+
+Standard glass surface
+
+Feature blur
+
+20px
+
+Sparse feature surface
+
+The background fill alpha is not the text opacity. Never apply opacity to the whole card. Use backdrop-filter: blur(14px) saturate(115%) where supported and a solid forest fallback where it is not. Use no more than two or three glass layers in the visible viewport. Dense review tables use strong glass or a solid surface.
+
+Simple Mode must be the default state. New users see the four-step flow from Section 3, not the full question library. Advanced is an explicit opt-in. Saved farm/field context is used to skip already-known setup questions. The detailed layout rules below apply to both modes, but Simple Mode hides technical fields and empty groups.
+
+2.2 Main wizard composition
+
+Desktop (1280px and wider)
+
+App shell retains the normal 64px global top navigation. The selected farm/field context is visible but compact.
+
+Main questionnaire container is centred with a maximum width of roughly 1120px and generous 32–40px gutters.
+
+The primary question column occupies approximately 8 of 12 columns. A right-side context rail occupies 4 of 12 columns when the current question benefits from it.
+
+Question card has 28–32px internal padding, 16px radius, default glass fill, 14px blur and subtle border.
+
+Top of the question card: small uppercase section label, question number/stage, large plain-language question, then a one-sentence explanation.
+
+Middle: one main answer control or a small cohesive answer group. Each answer has a clear label and optional short description.
+
+Bottom: “Why we ask” expandable explanation, any evidence suggestion/source status, and navigation controls.
+
+Back remains bottom-left. Continue/Save answer is bottom-right. Save & exit is a consistent secondary action.
+
+The right rail may contain a field context summary, a small map preview, “What we know so far”, data freshness or the explanation of a detected gap. It must never introduce unrelated fields or compete with the main question.
+
+Tablet (768–1279px)
+
+Use a 12-column or flexible grid with the main question taking the full width when the side rail would make controls cramped.
+
+Convert the context rail into a compact horizontal evidence strip above or below the question.
+
+Keep all primary buttons at least 44px high for touch.
+
+Mobile (360–767px)
+
+Single-column flow with 16px gutters (12px at 360px where necessary).
+
+Main question card fills the content width. Side rail becomes collapsible “Field context” or “Why we ask” sections.
+
+Primary and secondary actions stack or share a full-width bottom action bar without covering form content.
+
+Map polygon editing uses a full-screen sheet or dedicated map step; do not squeeze an interactive map into a small card.
+
+Avoid horizontal page overflow. Tables become labelled key/value groups or controlled horizontal scrollers.
+
+2.3 Progress and navigation UI
+
+Simple Mode: show only the four-step progress indicator, such as Step 2 of 4. Skip steps already completed from saved farm/field data; update the visible sequence honestly. Never show the full advanced question count or imply every farmer must answer the entire library.
+
+Optional refinement: if the farmer chooses extra accuracy questions, extend the visible flow only with the currently selected follow-ups. The indicator must reflect the real active set and allow the farmer to finish early.
+
+Advanced Mode: progress may be grouped into Field, Land & Soil, Water, Crop History, Planning, Priorities and Review. Calculate the active route from actual branch rules; never display a fixed total that becomes false. When a branch count is not yet known, show truthful section progress rather than a fabricated percentage.
+
+Completed sections use a check icon plus text. Current section uses the leaf accent. Not-yet-visited sections remain neutral.
+
+Back navigation preserves every valid answer. Browser refresh resumes the saved draft and current question.
+
+Keyboard: Tab/Shift+Tab, arrow navigation for radios, Enter/Space for selection, Escape only where safe, visible focus ring and correct screen-reader labels.
+
+Respect prefers-reduced-motion. Question transitions use restrained opacity/transform over roughly 180–240ms; never animate heavy blur continuously.
+
+2.4 Answer-control patterns
+
+Use the following control conventions consistently:
+
+Single-select cards: one answer from mutually exclusive options, e.g. rain-fed / irrigated / both.
+
+Multi-select chips: several independent crops, sources or constraints may be selected.
+
+Searchable crop selector: crop names, synonyms and family appear distinctly; no ambiguous free-text crop aliases in canonical storage.
+
+Repeatable season record: add one row per actual season/crop, each with year/date/status and optional notes.
+
+Numeric field with unit selector: never accept a bare number where the unit changes meaning.
+
+Range/date control: use only when the farmer knows the range/date; allow “not sure”.
+
+Map/polygon control: pin and polygon are separate modes with separate save operations.
+
+Lab result group: every measurement carries unit, sample date, depth and test/lab source.
+
+Priority slider: 0–100 preference strength with a readable label; show normalized percentages on the final review.
+
+Natural-language note: can help the farmer describe a practice, but parsed fields are a draft requiring confirmation.
+
+2.5 Question-card content hierarchy
+
+Every question screen should use the following sequence:
+
+1. SECTION / STEP eyebrow.
+
+2. One direct farmer-facing question.
+
+3. One short explanation in everyday language.
+
+4. Main answer control.
+
+5. A visible unknown/skip option when optional.
+
+6. “Why we ask” disclosure with the agronomic/data reason.
+
+7. Optional “Use suggested value” area if a real data source has returned a candidate value.
+
+8. Inline validation and unit/help text beside the affected field.
+
+9. Back, Continue, Save & exit actions.
+
+The system must not display an API-sourced answer as though the farmer typed it. Show source labels such as Suggested from mapped soil data, Weather model estimate, You entered this, or Lab result supplied by you.
+
+3. Journey map and question architecture
+
+The wizard supports two separate entry modes:
+
+Create: start a new blank questionnaire/farm/field record with new stable IDs. Do not copy answers from another field or farm.
+
+Edit / reassess: load the selected field's saved answers, preserve the existing identity, show the previous review, and mark affected downstream suggestions stale when an upstream answer changes.
+
+3.1 Default sequence: Simple Mode first
+
+Step
+
+Farmer prompt
+
+Status / behavior
+
+1. Farm, field and location
+
+Which field are we planning for?
+
+Required only where saved context is missing. Select existing record or create a simple field and confirm a location point. Polygon optional.
+
+2. Recent crops
+
+What has grown here recently?
+
+Core; up to three growing seasons where known; unknown allowed; Fallow and Cover Crop stay separate.
+
+3. Water access
+
+How does this field get water?
+
+Core; Rain-fed / Irrigated / Both / Not sure. One reliability follow-up only if material.
+
+4. Main goal
+
+What matters most for this plan?
+
+Core; Balanced plan preselected; farmer may choose water, soil, resilience, suitability or productivity.
+
+Defaults
+
+Planning horizon and soil evidence
+
+Three growing seasons by default for annual-crop first pass, editable in review. Use verified labelled soil evidence or leave unknown.
+
+Accuracy choice
+
+Would you like a few extra details for greater accuracy?
+
+Optional. Continue with current information or answer up to three high-impact, relevant follow-ups in the first pass.
+
+Review and continue
+
+Check the compact summary
+
+Review core answers, retrieved evidence, important gaps and consent. Save or continue with this snapshot.
+
+Simple Mode is the default and uses the four short steps above. Saved farm/field context is prefilled and skipped; the optional accuracy gate appears only after the basic path.
+
+3.2 Minimum viable answer set
+
+The four-step path is sufficient for a first-pass assessment when the following conditions are met:
+
+One farm/field context is selected or created, and a farmer-confirmed location point exists. A field polygon is not mandatory.
+
+The crop-history question has a known answer or an explicit unknown state.
+
+Water access has a known answer or an explicit unknown state.
+
+A priority preset is selected, with Balanced plan preselected by default.
+
+The planning horizon uses the disclosed default or is edited in the compact review; the farmer reviews the summary and makes the relevant external-data consent choice.
+
+Do not require soil texture, pH, laboratory values, crop exclusions, detailed irrigation measurements, management practices, yield or economic inputs in the initial path. Ask later only when the farmer opts in or when one particular calculation cannot responsibly be evaluated without clarification. Declining optional questions must not block the first pass.
+
+The full detailed catalogue below is preserved as the question bank for optional accuracy refinement. It must never be presented as the default first-run sequence.
+
+4. Advanced accuracy question library and conditional logic
+
+Important: this is the question library for optional refinement and Advanced Mode, not the Simple Mode first-run form. Questions below appear only when the farmer opts into more accuracy, an answer creates a relevant branch, or a calculation genuinely needs one missing input. A “Required” label applies only inside that branch.
+
+4.1 Start, farm and field scope
+
+Q00 — What would you like to do?
+
+Farmer wording: “Are you creating a new field profile or updating an existing one?”
+
+Answers: Create a new profile / Edit an existing field.
+
+Required: Yes.
+
+Logic: Create allocates new farmId, fieldId and questionnaireId as needed. Edit requires selection of an existing farmId and fieldId, loads the latest profile version and retains the older snapshot for history.
+
+Validation: Do not allow Edit to silently clone the selected field into a new identity. Do not allow Create to inherit unrelated crop history or soil values.
+
+Downstream: Determines draft and version handling only; it must not modify crop-scoring values by itself.
+
+Q01 — Which farm are we planning for?
+
+Farmer wording: “Which farm is this field part of?”
+
+Answers: existing farm selector, or Add a farm with a name and optional description.
+
+Required: Yes.
+
+Logic: Farm name is a user label, not a location or scientific attribute. If a new farm is created, persist it as a draft before continuing.
+
+Validation: Unique stable ID; do not use farm name as a database key. Avoid duplicate farms through a confirmation/search suggestion, not silent merging.
+
+Q02 — Which field should we assess?
+
+Farmer wording: “Which field do you want to plan for?”
+
+Answers: existing field list / Add a field / This farm has one managed area.
+
+Required: Yes.
+
+Logic: Only one field profile is assessed per questionnaire run. If several fields need separate recommendations, create a separate snapshot per field or a clearly defined multi-field batch where each field retains its own soil/water/history inputs.
+
+Validation: Never average different fields' soil or crop histories into a fictitious shared field.
+
+Q03 — What is the field called?
+
+Farmer wording: “Give this field a name so you can recognise it.”
+
+Answers: short text (e.g. North Field, Plot 2).
+
+Required: Yes for a new field; prefilled/editable otherwise.
+
+Logic: Display label only. The backend uses fieldId for references.
+
+Validation: Trim whitespace; length and duplicate-label checks within a farm. Do not infer field size or crop use from the name.
+
+Q04 — What kind of land is this?
+
+Farmer wording: “What best describes this growing area?”
+
+Answers: open field / orchard or perennial planting / greenhouse or protected growing / mixed or intercropped area / pasture or forage / other / not sure.
+
+Visibility: Conditional only when the existing field record does not identify the production system and the distinction materially changes the eligible crop library. Do not add it as a routine Simple Mode step.
+
+Logic: Determines which crop library records, crop durations and planting-system assumptions are applicable. Greenhouse and orchard contexts may require different follow-up logic from annual open-field rotations.
+
+Validation: Other requires a short description. Unknown is allowed but may limit which candidate crops are considered.
+
+4.2 Location and field geometry
+
+Q05 — Where is the farm or field?
+
+Farmer wording: “Search for the farm, use your device location, or place a pin on the map.”
+
+Answers: place/address search; browser location (only after permission); manual map pin; manual latitude/longitude; select an already saved location.
+
+Required: Yes, a location point must be confirmed.
+
+Logic: A geocoding API can turn a place name into candidate coordinates. The farmer must select the correct result and confirm the pin. Browser geolocation requires an explicit permission prompt and is never forced. Manual coordinates are accepted after range validation. IP-derived location is not an acceptable farm-location source; at most it could be a clearly labelled, opt-in rough suggestion, and it must never be saved as a confirmed farm location.
+
+Validation: Latitude between -90 and 90; longitude between -180 and 180; reject null-island/default coordinates unless confirmed. Store WGS84 coordinates, accuracy/source and confirmation timestamp. Keep location point separate from the farm's display name/address.
+
+Data fetch: After confirmation and consent, request supported environmental data for the location. If only a town centroid is known, label the spatial result as town/region context, not exact field data.
+
+Q06 — Can you mark the field boundary?
+
+Farmer wording: “Can you outline the area you actually farm?”
+
+Answers: draw polygon / import supported boundary / select an existing polygon / I only know the general location.
+
+Required: Recommended, but may be skipped.
+
+Logic: A polygon enables area calculation and field-level aggregation of spatial products. A pin alone supports point-based weather/soil context only. If skipped, set geometryStatus = location_only; do not pretend the whole field was sampled.
+
+Validation: Valid closed polygon; coordinate order and CRS validated; detect self-intersection, invalid rings, zero area and suspicious overlaps. Calculate area with geodesically appropriate methods; never calculate hectares directly from raw latitude/longitude degrees. Show geometry area and farmer-declared area separately if both exist.
+
+Conditional: If the farmer has several separate plots, ask whether they should be treated as distinct fields. They normally should be.
+
+Q07 — How large is the field?
+
+Farmer wording: “Do you know the field's area?”
+
+Answers: numeric area plus units (m², hectares, acres, other supported unit) / Not sure.
+
+Required: Optional if a valid polygon area exists; otherwise recommended.
+
+Logic: If a polygon exists, show its computed area as a suggestion and ask whether it looks correct. If a farmer value differs materially, preserve both and request review; never silently overwrite either.
+
+Validation: Positive number, unit required, sensible upper/lower warning based on product policy. Do not clamp an invalid number silently.
+
+Q08 — Which timezone should we use for this field?
+
+Farmer wording: “Is this the correct local time zone for the field?”
+
+Answers: prefilled timezone from the geocoder/coordinate service, searchable override.
+
+Required: Yes as a stored value; prefill normally means no extra user effort.
+
+Logic: Drives local-day boundaries, planting windows, timestamps and future job schedules. If the provider returns no timezone, ask the user to choose a region/city.
+
+Validation: Store IANA timezone identifier, not only a fixed UTC offset.
+
+4.3 Soil and land
+
+Q09 — What is the soil like?
+
+Farmer wording: “Which soil feels closest to the soil in this field?”
+
+Answers: sand / loamy sand / sandy loam / loam / silt loam / silt / clay loam / clay / other known texture / I don't know.
+
+Visibility: Optional accuracy follow-up; not part of the Simple Mode first-run flow. Ask only when soil texture is likely to materially change crop eligibility/ranking and no suitable evidence is already available. Unknown remains valid.
+
+UI: Show a concise texture guide with simple tactile descriptions (gritty, smooth/floury, sticky/ribbon-forming). Do not require the farmer to know scientific terminology.
+
+Logic: Use as farmer-reported texture. A mapped dataset may suggest a second estimate; preserve both and label them differently. Do not automatically replace the farmer's answer.
+
+Downstream: May inform drainage, water-holding and crop-soil fit only through a documented model.
+
+Q10 — Do you have a recent soil test?
+
+Farmer wording: “Have you tested this field's soil?”
+
+Answers: yes, I have results / yes, but only some results / no / not sure.
+
+Required: Optional.
+
+Branch: If Yes, open Q11–Q15 for the available values. If No, continue without blocking.
+
+Logic: A lab test is field/sample evidence. Record test date, sample depth, method/lab and affected area if known. A regional mapped estimate is not a lab result.
+
+Q11 — What is the soil pH?
+
+Farmer wording: “What pH did your soil test show?”
+
+Answers: numeric value + measurement method if known + unitless pH scale + sample date + sample depth.
+
+Required: Only when Q10 says results exist and this result is available; otherwise skip.
+
+Validation: Plausible numeric range warning (do not silently adjust), date not in the future, depth unit required. Preserve lab report reference if uploaded.
+
+Downstream: Crop-specific pH fit only when the crop library has a sourced suitable range. Never use one universal ideal pH for every crop.
+
+Q12 — Do you know the soil salinity / electrical conductivity?
+
+Farmer wording: “Did the test measure salinity or electrical conductivity (EC)?”
+
+Answers: value + unit + method + date + depth / not measured.
+
+Logic: EC units and extract methods are not interchangeable. Reject or request clarification when the unit/method is missing. Do not infer salinity from pH or generic soil texture.
+
+Q13 — Do you know the organic matter or organic carbon level?
+
+Farmer wording: “Did your soil report include organic matter or organic carbon?”
+
+Answers: organic matter % or organic carbon %/g per kg, explicitly selected; unit, sample date/depth, method.
+
+Logic: Keep organic matter and organic carbon as separate variables. Any conversion must state its assumption and must not overwrite the original value.
+
+Q14 — Did the soil test include nutrients?
+
+Farmer wording: “Do you have nitrogen, phosphorus or potassium results?”
+
+Answers: multi-select N / P / K / other; enter each value with form, unit, method, date and depth.
+
+Logic: Nutrient forms and extraction methods differ. Do not compare incompatible results or convert a test value to a fertilizer recommendation without a validated method.
+
+Q15 — Does water drain away easily?
+
+Farmer wording: “After heavy rain or irrigation, what usually happens?”
+
+Answers: drains quickly / drains normally / stays wet for a long time / water pools or waterlogs / varies by area / not sure.
+
+Visibility: Optional accuracy follow-up; not part of the Simple Mode first-run flow. Ask only when drainage materially affects a candidate or a field-specific risk and no reliable evidence exists.
+
+Logic: Farmer observation. If “varies by area”, offer separate subfield/zone notes rather than flattening differences into one value.
+
+Downstream: Can flag drainage suitability and waterlogging constraints where crop-specific tolerances are known. Do not claim a measured drainage class from this answer.
+
+Q16 — Are there any hard soil or land limitations?
+
+Farmer wording: “Do you know of any of these conditions in this field?”
+
+Answers: shallow soil / hardpan or compaction / steep slope / erosion-prone / rocky/stony / saline patch / low-lying wet area / none known / not sure.
+
+Required: Optional, shown in Accuracy & Management or when farmer selects a relevant issue.
+
+Logic: Multi-select. For any selected item, ask severity/location and whether it applies to the whole field or a particular zone. A farmer-reported issue remains labelled as such.
+
+Downstream: Use only supported constraints; a slope estimate from terrain data is not proof of erosion or waterlogging.
+
+4.4 Water and irrigation
+
+Q17 — Where does this field get its water?
+
+Farmer wording: “How does this field normally receive water?”
+
+Answers: rainfall only / irrigation only / both rainfall and irrigation / other water source / not sure.
+
+Required: Yes, or explicit unknown.
+
+Logic: This answer determines which irrigation questions appear. Do not assume rainfall only because no irrigation record exists.
+
+Q18 — What is the irrigation source?
+
+Farmer wording: “Where does irrigation water come from?”
+
+Answers: well/groundwater / river or stream / canal / reservoir or pond / treated/reclaimed water / desalinated supply / purchased/trucked water / other / not applicable / unknown.
+
+Branch: Show if Q17 is irrigation-only or both.
+
+Logic: Stores supply type, not quantity or reliability. If multiple sources supply the field, allow more than one and identify seasonal use if known.
+
+Q19 — Which irrigation method do you use?
+
+Farmer wording: “How is irrigation applied?”
+
+Answers: drip / sprinkler / centre pivot / surface or furrow / basin/flood / manual hose/can / subsurface drip / other / varies / unknown.
+
+Branch: Q17 includes irrigation.
+
+Logic: Method may inform application-efficiency assumptions only if the model has sourced parameter ranges; never treat method alone as a measured application volume.
+
+Q20 — How reliable is the water supply?
+
+Farmer wording: “Can you usually get enough irrigation water when the crop needs it?”
+
+Answers: reliable throughout the season / usually reliable with occasional limits / restricted during dry periods / unreliable or rationed / highly variable / not sure.
+
+Branch: Q17 includes irrigation.
+
+Downstream: Resource constraint and risk; do not convert these categorical answers into an exact number of millimetres.
+
+Q21 — Is there a seasonal water limit?
+
+Farmer wording: “Are you limited by a water allocation, pump capacity or a fixed seasonal amount?”
+
+Answers: yes, known limit / yes, but I don't know the amount / no fixed limit / not sure.
+
+Branch: Irrigation present or water-limited farmer context.
+
+If known: Ask amount, unit (m³, L, mm over field, hours at known flow rate), time basis and whether the limit applies to this field or whole farm.
+
+Validation: A bare number without unit, time period and area/scope is not accepted as a usable water budget.
+
+Q22 — How often do you usually irrigate?
+
+Farmer wording: “What is your normal irrigation routine?”
+
+Answers: frequency (e.g. every N days / weekly / stage-dependent / only when needed) and preferred time of day; optional natural-language note.
+
+Branch: Irrigation present.
+
+Important logic: This creates a routine, not an actual irrigation event. Store recurrence, effective date, last-confirmed date, affected field, amount (if known) and parser confidence. Never infer actual water applied from the routine.
+
+Q23 — How much water is applied each time?
+
+Farmer wording: “Do you know roughly how much water is applied in one irrigation?”
+
+Answers: mm / m³ / litres / flow rate plus duration / not measured / varies.
+
+Branch: Show only if farmer indicates they know the amount or if a water-balance feature requires it.
+
+Logic: If using flow rate and runtime, derive volume only with a known flow unit, duration and field area. If any required unit is absent, request it or mark the quantity unavailable.
+
+Q24 — Is irrigation water quality a concern?
+
+Farmer wording: “Has the irrigation water ever caused salinity or quality problems?”
+
+Answers: no known issue / some salinity concern / known high salinity / other quality issue / water tested with lab results / not sure.
+
+Branch: Irrigation present.
+
+Logic: If tested, capture EC and units/method/date. A farmer concern is not an EC measurement. Never infer water salinity from a crop's appearance.
+
+4.5 Crop history and current crop
+
+Q25 — What has grown in this field recently?
+
+Farmer wording: “What crops have been grown here over the last few seasons?”
+
+Answers: Simple Mode captures up to the most recent three growing seasons; Advanced Mode may extend to five where known. Include “I don’t remember”, “The field is new” and “I only know the last crop”.
+
+Required: Ask in core flow; allow unknown.
+
+Each season record fields: crop ID; season/year; approximate planting and harvest dates or month range; status (planted/harvested/failed/abandoned); crop area share if mixed; source/confirmation; optional yield and note.
+
+Logic: Do not assume one crop per calendar year. A growing season and a calendar year are different. Support multiple crops in one year and separate crop occurrences. Keep Fallow and Cover Crop as distinct records.
+
+Downstream: Crop-family return intervals, host/disease carry-over, repeated-crop exposure and available sequence context.
+
+Q26 — Was the field ever left fallow or planted with a cover crop?
+
+Farmer wording: “Were any seasons left without a cash crop, or planted mainly to cover/protect the soil?”
+
+Answers: fallow / cover crop (select crop if known) / both in different seasons / neither / unknown.
+
+Branch: Show as part of Q25 or as a clarifier when history is incomplete.
+
+Logic: Fallow and cover crop have different agronomic effects. Never save them as a combined Fallow / Cover Crop value. Cover-crop species and biomass effects remain unknown unless supported.
+
+Q27 — Is anything currently growing in this field?
+
+Farmer wording: “Is a crop planted in the field right now?”
+
+Answers: no / yes / recently harvested / field is being prepared / not sure.
+
+Required: Conditional, only if current status is relevant and not already known.
+
+If Yes: ask crop, actual planting date (or approximate range), current stage (farmer-observed / externally estimated), expected harvest window and confirmation source.
+
+Critical rule: Do not infer that the recommended crop plan is already planted. A current crop comes only from a farmer-confirmed record or a separately reliable source.
+
+Q28 — Have you had recurring pest or disease problems?
+
+Farmer wording: “Have particular pests or diseases repeatedly affected this field?”
+
+Answers: no known issue / yes / uncertain / prefer not to say; if yes, crop, problem name, year/season, affected zone and confirmation/source.
+
+Branch: Optional detail; appears when crop history or selected crops indicate a relevant host question, or farmer chooses yes.
+
+Logic: Disease-host constraints require verified crop-host/pathogen data. If species-specific evidence is missing, use only a defensible family-level rule or disclose that the system cannot evaluate it.
+
+4.6 Planning horizon and growing calendar
+
+Q29 — How far ahead should the plan consider?
+
+Farmer wording: “How many growing seasons should we plan for?”
+
+Answers: a chosen number of seasons / calendar years / growing cycles / Help me choose.
+
+Simple Mode default: Three growing seasons for a first-pass annual-crop assessment, shown in the compact review and editable without an extra question screen. Advanced visibility: Ask for a different horizon only if the farmer wants to change the default or the crop system requires it.
+
+Logic: Keep calendarYear, seasonNumber and growingCycleId distinct. Cycle length can be determined by crop duration and feasible transitions; do not force a four-year or four-season plan.
+
+Q30 — How many crops can you grow in a typical year?
+
+Farmer wording: “How many growing seasons or crop cycles can this field usually support in one year?”
+
+Answers: one / two / three or more / depends on water and weather / not sure.
+
+Required: Recommended; can be inferred only as an editable suggestion where a confirmed local calendar supports it.
+
+Logic: If more than one, ask about overlapping crops/intercropping versus successive crops. These are not the same management system.
+
+Q31 — When can you normally plant and harvest?
+
+Farmer wording: “Are there fixed planting or harvest windows you need to follow?”
+
+Answers: flexible / known planting months / known harvest deadline / labour or equipment window / market/contract window / other / unknown.
+
+Branch: Ask when the crop system needs a defined window or if the farmer selects a fixed constraint.
+
+Logic: Store month/day ranges, timezone and whether each date is fixed or approximate. Weather-model forecasts must not be used as long-range planting calendars.
+
+4.7 Crop constraints and management
+
+Q32 — Are there crops you must grow?
+
+Farmer wording: “Are there any crops you definitely want included?”
+
+Answers: crop selector multi-select / none / not sure.
+
+Visibility: Optional refinement. The simple path may propose None as a disclosed default, which the farmer can accept or change. Ask only if crop requirements could materially affect feasibility.
+
+Logic: A required crop is a candidate constraint. If it cannot fit the horizon or violates an agronomic hard constraint, explain the conflict; do not force it through.
+
+Q33 — Are there crops you do not want to grow?
+
+Farmer wording: “Are there any crops you want to avoid?”
+
+Answers: crop selector / crop-family exclusion where supported / none.
+
+Visibility: Optional refinement. The simple path may propose None as a disclosed default, which the farmer can accept or change. Ask only if crop exclusions could materially affect candidate feasibility.
+
+Logic: Exclusions are hard constraints if the farmer explicitly confirms them. Store crop IDs/family IDs, not only free text.
+
+Q34 — Which farming practices should the assessment account for?
+
+Farmer wording: “Which of these practices are typical for this field?”
+
+Answers: conventional tillage / reduced tillage / no-till / compost or manure / residue retained / residues removed / green manure / cover cropping / synthetic fertilizer / organic nutrient inputs / integrated pest management / other / not sure.
+
+Required: Optional, progressively disclosed.
+
+Logic: Ask which practices apply to this field, their frequency and confirmation date if they influence a model. A farm-level default can be copied to a field only after the farmer confirms it applies there.
+
+Q35 — Do you use fertilizer or soil amendments?
+
+Farmer wording: “What nutrient or soil amendments are normally applied?”
+
+Answers: product/type, approximate amount and unit, timing, application area, and source/record / unknown.
+
+Branch: Show when management detail is requested or nutrient balance is in scope.
+
+Logic: Do not calculate nutrient balance from a product name alone. The product composition and amount must be known. If unknown, leave the nutrient input unavailable.
+
+Q36 — Are there field operations or equipment limits?
+
+Farmer wording: “Are there practical limits that affect what you can plant or when?”
+
+Answers: limited labour / machinery or access / planting window / harvest window / storage / seed availability / other / none / unknown.
+
+Required: Optional.
+
+Logic: Store as operational preferences/constraints. Do not create economic profitability calculations from them unless the relevant market/cost data feature is separately implemented.
+
+4.8 Priorities and risk preference
+
+Q37 — What matters most in the rotation?
+
+Farmer wording: “What would make a rotation best for your farm?”
+
+Answer mode: choose a preset profile or Set my own priorities.
+
+Preset suggestions: Balanced farm plan (preselected default); Save water; Rebuild and protect soil; Handle difficult weather; Prioritise crop suitability; Prioritise productivity potential.
+
+Required: Yes as the Simple Mode main-goal step; Balanced default is visible and editable.
+
+Logic: Presets map to documented priority vectors. Do not silently change the meaning of a preset when the model changes; version the preset definitions.
+
+Q38 — Adjust your priorities
+
+Farmer wording: “How important is each of these goals?”
+
+Controls: Water efficiency; soil improvement; climate resilience; crop suitability; productivity potential.
+
+Scale: 0–100 priority input per dimension, with plain-language endpoints and optional preset reset.
+
+Required: Only if custom priorities selected; otherwise show preset weights for confirmation.
+
+Logic: Normalize selected priorities: w_j = p_j / sum(p) for non-negative preferences where the sum is greater than zero. If all are zero, require a preset or apply a named, versioned default only after confirmation. Display normalized weights in review. These weights change the ranking objective, not the underlying weather/soil measurements or hard constraints.
+
+Conflict prompt: When trade-offs are material, explain them in ordinary language, e.g. “Saving more water may reduce the number of high-water-demand crops that remain eligible.” Do not ask a generic trade-off question when no meaningful conflict exists.
+
+Q39 — How much risk are you comfortable with?
+
+Farmer wording: “Would you prefer a safer plan or are you comfortable with more uncertainty for a potentially stronger fit?”
+
+Answers: cautious / balanced / willing to accept more uncertainty / help me decide.
+
+Required: Optional but recommended.
+
+Logic: Risk preference may affect ranking among feasible options and which uncertainties are highlighted. It must not override minimum agronomic feasibility thresholds. Do not equate “risk tolerance” with a validated probability of crop failure.
+
+4.9 Optional yield and economic inputs
+
+Q40 — Do you have previous yield records?
+
+Farmer wording: “Do you know the yield from previous seasons?”
+
+Answers: repeatable crop/season yield, quantity, unit (kg, tonnes, tonnes/ha, etc.), affected area, measurement source and year / no records / unknown.
+
+Required: Optional.
+
+Logic: Only compare yields on compatible units, crop, area basis, variety and season context. Farmer-reported yields remain farmer-reported. Do not infer yield from climate or a rotation match score.
+
+Q41 — Do costs, budgets or market access need to be considered?
+
+Farmer wording: “Should we account for budget or market constraints?”
+
+Answers: yes / no / later.
+
+Status: Later, data-supported phase unless validated cost and market datasets are implemented.
+
+Logic: If unavailable, explain that financial optimization is not part of the current assessment. Do not create fake profit, margin or market-demand outputs.
+
+5. Conditional question engine
+
+The wizard must be a data-driven decision tree, not dozens of if statements embedded in UI components.
+
+5.1 Branch rules
+
+Trigger answer
+
+Follow-up behavior
+
+Do not assume
+
+New farm/field
+
+Ask farm/field identity and location
+
+Do not copy another field's profile
+
+Existing field
+
+Load saved answer snapshot and freshness
+
+Do not assume saved facts are still current
+
+Location confirmed
+
+Offer geocoding/timezone and supported data retrieval
+
+Do not treat IP location as exact farm position
+
+Polygon available
+
+Compute area and spatial coverage
+
+Do not treat map pin as polygon
+
+No polygon
+
+Continue as location-only / point context
+
+Do not claim field-wide spatial analysis
+
+Soil test available
+
+Ask only for values present in that report
+
+Do not invent missing tests
+
+Soil texture unknown
+
+Continue; show estimate only as a labelled suggestion
+
+Do not silently choose a texture
+
+Irrigation present
+
+Ask source, method, reliability and optional amount/routine
+
+Do not assume frequency or quantity
+
+Rain-fed only
+
+Skip irrigation quantity/routine questions
+
+Do not infer that no water stress exists
+
+Water limit selected
+
+Ask quantity, units, field/farm scope and period
+
+Do not accept unitless values
+
+Crop history incomplete
+
+Offer up to five repeatable records and unknown state
+
+Do not make up prior crops
+
+Current crop = yes
+
+Ask crop, actual planting date and confirmation
+
+Do not infer current crop from a recommendation
+
+Pest/disease = yes
+
+Ask affected crop, issue, season, zone and evidence
+
+Do not assert host relationships without crop knowledge
+
+Multiple crops/year
+
+Ask successive-crop vs intercrop context
+
+Do not equate calendar year with season
+
+Required crop cannot fit
+
+Surface a constraint conflict for review
+
+Do not bypass feasibility rules
+
+Crop exclusion selected
+
+Persist as confirmed hard constraint
+
+Do not reintroduce excluded crop in candidates
+
+Custom priorities
+
+Show sliders and normalized weights
+
+Do not let weights override hard constraints
+
+Risk = cautious
+
+Prefer robust options among feasible candidates
+
+Do not fabricate risk probabilities
+
+A key source fails
+
+Keep the answer flow usable and label data unavailable
+
+Do not block unrelated farmer answers
+
+5.2 Rule-engine contract
+
+Each question definition should be stored as a versioned record with:
+
+questionId and questionVersion;
+
+sectionId, sortOrder and farmerFacingPrompt;
+
+answerType, allowed options, units and validation schema;
+
+requiredRule and visibleWhen expression;
+
+followUpQuestionIds;
+
+unknownAllowed and skipAllowed flags;
+
+whyWeAsk explanation;
+
+affectedInputKeys and invalidation dependencies;
+
+simpleModeLabel and optional advancedModeLabel;
+
+localized strings, glossary references and accessibility name;
+
+tests for each branch and invalid/unknown state.
+
+The backend must evaluate the authoritative branch rules as well as the frontend. The frontend may hide irrelevant questions for usability, but it is not a security or data-integrity boundary. Store the answer snapshot with the questionnaire schema version so an old draft remains interpretable when questions change later.
+
+5.3 Upstream-change invalidation
+
+When an upstream answer changes, mark only dependent suggestions and calculations stale. Examples:
+
+Location change → timezone, weather, climate, terrain and mapped soil suggestions need refresh.
+
+Boundary change → area, valid raster coverage and polygon aggregates need refresh.
+
+Soil texture/test change → water-holding estimates and crop-soil suitability need refresh.
+
+Irrigation source/limit/routine change → water supply assumptions and any water-dependent ranking need refresh.
+
+Crop history change → family return intervals, host breaks and sequence feasibility need refresh.
+
+Planning horizon change → duration and sequence search need refresh.
+
+Priority weights change → ranking must be recomputed, but raw environmental values must not change.
+
+Risk preference change → preference ranking/explanations may change; feasibility does not.
+
+A stale value remains visible with Needs refresh or Suggestion needs review; do not replace it with a newly fetched value without retaining the prior source snapshot.
+
+6. Location and external data retrieval logic
+
+6.1 Location capture policy
+
+Use a clear precedence order:
+
+1. Farmer selects a saved farm/field location and confirms it is still correct.
+
+2. Farmer searches a farm name, village, town, address or postcode using a geocoding provider and chooses a specific result.
+
+3. Farmer explicitly grants browser geolocation permission and confirms the resulting pin.
+
+4. Farmer places a pin manually or enters coordinates.
+
+5. IP-derived location is never used as the confirmed field coordinate. It may be offered only as a coarse optional search hint if the farmer explicitly agrees; it must not be stored as a verified farm coordinate or used to claim field-level precision.
+
+Store locationMethod, latitude, longitude, accuracyMeters where known, timezone, geocoderProvider, confirmedByUser, confirmedAt and locationVersion.
+
+For a polygon, store the full geometry and version. Derive a representative centroid or sample points for API retrieval where appropriate, but label them as derived from the polygon. For raster sources, use a documented polygon-to-grid extraction method (e.g. area-weighted or valid-pixel aggregation) only when the source resolution and field size justify it. A field smaller than the grid cell must not be described as fully sampled by that grid.
+
+6.2 External source orchestration
+
+After location confirmation and the user's remote-data consent, request data from independent configured providers in parallel where safe. Use a server-side connector registry; the browser must not call providers ad hoc from each question component.
+
+Recommended source responsibilities
+
+Source/provider
+
+Intended role
+
+Status from supplied audit / caution
+
+Open-Meteo Geocoding API
+
+Convert place-name search to candidate coordinates, country/admin area, timezone and elevation
+
+Documented provider option; verify actual integration in repository
+
+Open-Meteo Forecast API
+
+Current/modelled conditions and short-range hourly/daily forecast
+
+Supplied code audit says current-weather retrieval is visible; forecast integration must be separately verified
+
+Open-Meteo Historical Weather API
+
+Historical reanalysis time series for climate features
+
+Planned connector unless current repository proves otherwise; archive data is reanalysis, not a station observation
+
+NASA POWER Monthly API
+
+Monthly climatology/history
+
+Identified as visibly fetched in supplied code snapshot
+
+NASA POWER Daily API
+
+Daily historical meteorological/solar series for GDD, rainfall seasonality and related features
+
+Required planned upgrade; do not assume monthly integration equals daily integration
+
+SoilGrids
+
+Mapped soil-property priors with depth and uncertainty
+
+Planned; the official REST service page currently reports the REST API is temporarily paused. Do not make a live dependency until a supported access route is verified
+
+NASA SMAP
+
+Model-assisted surface/root-zone soil moisture product
+
+Planned and product-specific; not a direct field sensor reading
+
+NASA GPM IMERG
+
+Rainfall cross-check / gridded precipitation series
+
+Planned; verify product, units, latency and resolution
+
+MODIS / Sentinel-2 / HLS
+
+Vegetation index or land-surface indicators where a real processing pipeline exists
+
+Planned; require image quality/cloud flags, acquisition/composite date and valid-pixel coverage
+
+NASADEM or equivalent elevation source
+
+Terrain/elevation context and derived slope where resolution supports it
+
+Planned; terrain alone does not prove runoff, erosion or waterlogging
+
+The v8 plan lists these as potential categories, not proof that they are all active. Provider status must be checked during deployment and recorded in the source registry.
+
+6.3 Specific API request patterns
+
+These examples are engineering references, not hardcoded UI calls. Server adapters should construct requests, apply timeouts, validate response shape and normalize the values.
+
+Place-name geocoding: Open-Meteo documents https://geocoding-api.open-meteo.com/v1/search?name={query}&count={n}&language=en. The response can include WGS84 latitude/longitude, country/admin areas, timezone and elevation. Show the ranked results and require farmer selection; never auto-pick the first result if ambiguous.
+
+Current/forecast conditions: Open-Meteo documents https://api.open-meteo.com/v1/forecast with latitude, longitude, requested current, hourly and daily variables and timezone. Request only variables needed by the question/calculation. Current and forecast data are model outputs with validity timestamps, not farmer measurements.
+
+Historical weather: Open-Meteo documents the /v1/archive endpoint for a coordinate/time range. The response must retain the dataset/model and temporal resolution. Reanalysis must not be called a local weather-station reading.
+
+NASA POWER Daily: use the documented Daily point API with latitude, longitude, start, end, parameters, community, time-standard and format. NASA POWER notes that Daily results are by day and that time standard defaults to Local Solar Time unless otherwise specified. The adapter should request and store a consistent explicit time standard, preferably UTC for canonical daily aggregation with local display conversion handled separately.
+
+Important: never request an entire global catalogue for one field. Request only the point/grid cell and date range needed, cache by provider/product/variable/location cell/date window/version and respect provider rate limits and terms.
+
+6.4 Data retrieval sequence
+
+1. Validate the location point, polygon version and consent record.
+
+2. Resolve timezone and optional elevation; preserve provider response metadata.
+
+3. Determine spatial sampling method based on field geometry and each dataset's native resolution.
+
+4. Ask the source registry which providers are configured, operational and appropriate for the requested variables.
+
+5. Fetch current/short-range forecast only for context; do not treat a 7–16 day forecast as a multi-year rotation climate baseline.
+
+6. Fetch sufficient historical daily/monthly data for the actual calculation. Never combine monthly climatology with a daily metric as though they had the same temporal resolution.
+
+7. Fetch optional soil/terrain/vegetation products only if their connectors are verified and their resolution is appropriate.
+
+8. Normalize dates, timezone, units, coordinate reference system, missing-value codes and quality flags.
+
+9. Compare sources where useful. Do not blindly average conflicting datasets; select a documented primary source and record disagreements.
+
+10. Save raw response references or reproducible source metadata, canonical observations and retrieval timestamps.
+
+11. Produce a source-coverage report and identify the calculations that are still valid, degraded or unavailable.
+
+6.5 Weather and climate feature extraction
+
+Only compute a feature when the source contains the required variables and the date range is suitable.
+
+Daily minimum, maximum and mean temperature, each with units and time basis.
+
+Daily and seasonal precipitation sums, with period boundaries and source type.
+
+Solar radiation/shortwave radiation where available.
+
+Humidity, dew point and vapour-pressure deficit only when required inputs exist.
+
+Growing Degree Days (GDD) with a crop-specific base and any cap/floor sourced from the crop knowledge record. A common daily form is max(0, ((Tmax + Tmin) / 2) - Tbase), but the selected crop method must define whether upper/lower caps are applied and which days are in the accumulation period.
+
+Heat-stress days only with a crop-specific threshold and known sensitive stage/time window.
+
+Frost exposure only with a supported temperature threshold and planting-stage relevance.
+
+Dry-spell length from a documented daily-rainfall threshold and minimum consecutive days.
+
+Rainfall anomaly only against a comparable historical baseline with a stated period and sample size.
+
+Dry / typical / wet seasons only from documented historical quantiles or year-selection criteria; historical cases are not forecasts.
+
+Do not compute a trend from a short series and present it as a long-term climate trend. “Not enough history to assess” is a valid result.
+
+6.6 Soil, water and vegetation retrieval cautions
+
+A mapped soil property is a prediction/prior for a grid cell, not a lab sample from the field.
+
+A SMAP model-assisted moisture estimate is not a direct measurement from the exact field.
+
+Vegetation indices must come from valid imagery/product processing. NDVI must never be synthesized from precipitation.
+
+Satellite pixels must be screened for clouds/quality and the valid-pixel proportion must be shown.
+
+Terrain slope may support a contextual risk feature; slope alone does not establish erosion, runoff or drainage status.
+
+If provider resolution is larger than the field, label it regional/grid context, not exact field observation.
+
+Preserve the distinction between observed, modelled, forecast, climatological, farmer-reported and derived values.
+
+7. Canonical answer and evidence data model
+
+The questionnaire should write a normalized snapshot, not a collection of untyped strings.
+
+7.1 Answer object
+
+Every answer should contain, at minimum:
+
+answerId, questionId, questionVersion;
+
+farmId, fieldId, questionnaireId, profileVersion;
+
+typed value (string, number, boolean, enum, array, date, geometry or object);
+
+unit where applicable;
+
+scope (farm, field, subfield/zone or season/crop occurrence);
+
+sourceType (farmer_reported, farmer_confirmed, dataset_estimate, lab_result, derived, ai_interpreted_pending_confirmation, unknown, not_applicable, skipped);
+
+sourceName, sourceProduct, sourceUrl or reference if external;
+
+validTime / observation date, retrievedAt, confirmedAt;
+
+measurement depth / spatial basis / crop stage where applicable;
+
+quality flags, confidence metadata and notes;
+
+createdAt, updatedAt, createdBy and version.
+
+Do not encode several states into a single free-form label and then guess the status in the UI.
+
+7.2 Separate canonical records
+
+Use different records for:
+
+Farmer answer: what the farmer says about their field.
+
+Dataset observation: what an external provider returned.
+
+Farmer-confirmed estimate: a dataset suggestion that the farmer reviewed and accepted.
+
+Management routine: what normally happens, e.g. irrigation every three days.
+
+Management event: what actually happened on a date, e.g. irrigation applied today.
+
+Crop history occurrence: what was actually planted/harvested in a past or current season.
+
+Rotation candidate/plan: a proposed sequence; not a historical or active crop occurrence until deliberately selected/recorded.
+
+7.3 Draft and snapshot lifecycle
+
+Autosave each valid answer to persistent storage; show Draft saved only after successful write acknowledgement.
+
+Save current questionId, branch context and schema version so a browser refresh resumes correctly.
+
+On failed save, keep a local recoverable draft and show Not yet saved; do not claim success.
+
+The final review creates an immutable input snapshot/version. Any later change creates a new version and marks downstream outputs stale.
+
+Old reports must retain the exact inputs and source data used at the time; new retrieval does not rewrite an old run.
+
+8. Calculations and decision logic that consume the answers
+
+This section defines the calculation contract, not the design of the rotation results page. Every calculation must be a pure, versioned engine function with typed inputs/outputs and unit tests.
+
+8.1 Input normalization and validation
+
+Before any crop scoring:
+
+1. Convert units to canonical units while retaining original value/unit.
+
+2. Validate ranges and physical plausibility without silently clamping user input.
+
+3. Resolve synonyms to stable crop IDs and crop-family IDs.
+
+4. Convert date ranges into timezone-aware season records; preserve approximate vs exact dates.
+
+5. Ensure each input has scope: farm vs field vs season vs event.
+
+6. Resolve geometry and compute area only with a suitable geodesic/projected method.
+
+7. Attach provenance and quality flags to every observation.
+
+8. Determine which metrics are computable, degraded or unavailable.
+
+A schema error blocks the invalid input and asks for correction. A missing optional input does not become a default “good” input.
+
+8.2 Crop-knowledge record prerequisites
+
+The crop library must be typed, versioned and source-tagged. A crop record should hold only supported attributes, such as:
+
+crop identity, synonyms, annual/perennial behavior and crop family;
+
+planting/harvest or growth-duration ranges by appropriate climate/region context;
+
+temperature/GDD thresholds, heat/frost sensitivity and stage relevance;
+
+water-demand parameters and growth-stage crop coefficients where sourced;
+
+soil texture, pH, salinity and drainage tolerance ranges where sourced;
+
+rooting depth / water extraction parameters where supported;
+
+nutrient removal/contribution and nitrogen fixation assumptions where supported;
+
+crop-host/pathogen relationships and family return intervals where supported;
+
+parameter source, confidence/quality and version.
+
+An unknown crop property remains unknown. Do not create a complete agronomic profile based only on the crop's name.
+
+8.3 Water calculations
+
+Keep the following variables distinct:
+
+ET0: reference evapotranspiration, method/source/period required;
+
+Kc: crop coefficient for a sourced crop and growth stage;
+
+ETc: crop evapotranspiration estimate, e.g. ETc = Kc × ET0 where prerequisites hold;
+
+P: observed/reanalysis/forecast precipitation with type and time range;
+
+Peff: effective rainfall estimated by a documented method, not equal to raw precipitation by definition;
+
+I: actual farmer-confirmed irrigation event/amount;
+
+Iroutine: expected management routine, not actual water applied;
+
+runoff/drainage and root-zone storage terms only when supported.
+
+A simplified storage balance may be represented as S_t = S_(t-1) + Peff + I - ETc - runoff - drainage, but this equation is usable only if all included terms, the time step, sign convention, soil-water capacity and initial condition are defined. Do not silently omit unknown terms and then present the result as a fully measured water balance.
+
+If an interval-only routine is known but its amount is not, the engine can use it as a qualitative management context; it cannot derive applied millimetres. If soil available-water capacity/rooting depth is unknown, do not claim precise plant-available water, readily available water or root-zone stress.
+
+Use FAO-56 Penman–Monteith only if its required meteorological inputs, unit conventions and calculations are actually implemented and validated. A temperature-only heuristic must be labelled a simple estimate, not FAO-56. If using a provider's ET0 variable, retain the provider's method/product metadata and verify the exact meaning before treating it as a reference value.
+
+8.4 Crop suitability calculation
+
+Crop suitability is a single-crop / field / planting-window fit. It is not the same as the sequence score.
+
+Possible factors when available:
+
+temperature and growing-season length;
+
+GDD and crop growth duration;
+
+heat/frost exposure at relevant stages;
+
+rainfall and water availability;
+
+soil texture and pH;
+
+salinity and drainage;
+
+slope/terrain where justified;
+
+planting/harvest-window feasibility.
+
+Normalize each supported factor to a documented 0–1 scale and use sourced crop-specific response curves/ranges. The v8 plan specifies a documented weighted-geometric approach and a limiting-factor guard. One implementation form is:
+
+Suitability = 100 × exp( Σ_i w_i × ln(max(ε, f_i)) )
+
+where f_i is a supported factor score, w_i is a normalized factor weight, and ε avoids taking ln(0) while preserving a near-zero penalty. The exact ε, factor curves, weights and limiting thresholds must be versioned and validated; they must not be chosen just to create attractive scores.
+
+Before scoring, apply hard minimum rules. If a crop crosses a verified non-negotiable temperature, soil, salinity, water, duration or planting-window limit, mark the crop infeasible or apply the explicitly documented cap. The farmer's preference sliders cannot undo this.
+
+Missing factors are not assigned 1.0 or a neutral ideal. Track available-factor coverage and confidence separately. Where the factor is safety/feasibility-critical, withhold a positive suitability claim until sufficient evidence exists. Where it is optional, a provisional score may be calculated from supported factors only if the method explicitly accounts for missing weight and clearly labels the result provisional.
+
+8.5 Rotation-sequence constraints and score inputs
+
+A multi-season sequence must be evaluated after single-crop suitability and hard-feasibility checks.
+
+Hard constraints (feasibility gate)
+
+user-confirmed crop exclusions;
+
+user-required crops, if compatible with the horizon and all hard rules;
+
+crop-family return intervals and maximum repeated-host exposure where crop knowledge supports them;
+
+disease-host restrictions only where the crop/host relationship is verified;
+
+planting/harvest transition feasibility and growth duration;
+
+climate and season compatibility;
+
+known soil/water limits and crop tolerance floors;
+
+perennial or multi-year occupancy rules;
+
+number of crops/seasons per year and field availability;
+
+horizon and timing feasibility.
+
+If no candidate survives, return no_feasible_candidate with the exact rule(s) causing rejection. Do not force an invalid sequence to fill the UI.
+
+Weighted preferences (ranking only)
+
+Candidate components may include supported suitability, water demand/efficiency, soil trajectory, climate resilience, productivity potential and crop diversity. Each component must have a registered definition, direction, units, inputs, normalization, version and limitations. Preferences alter component weights; they must not alter raw weather or soil observations.
+
+For a custom priority vector, normalize non-negative preference values using w_j = p_j / Σp_j. Keep the preset mapping versioned. The actual composite aggregation method must be documented and calibrated before displaying a 0–100 match score. Do not imply the score is a yield percentage or success probability.
+
+Sequence carry-over
+
+A previous crop may affect the next crop through a soil-water state, residue, nitrogen contribution, rooting profile, crop-family interval or host-risk rule. Carry-over is included only where the model has sourced parameters and tested assumptions. A legume nitrogen credit must appear in the correct following crop and account for documented decay/availability; never award a blanket universal nitrogen bonus.
+
+Fallow and Cover Crop are separate sequence choices. Their consequences depend on water recharge, erosion cover, biomass, weeds, nutrient effects, season and crop/soil data. Neither is inherently best.
+
+8.6 Candidate-generation method
+
+Use a bounded deterministic search method such as beam search or dynamic programming where appropriate.
+
+Use stable candidate/rotation IDs; do not rely on display names as IDs.
+
+Use normalized input hash + engine version + crop-library version as the reproducibility seed/context.
+
+Apply feasibility constraints during expansion where possible, not only after generating a large invalid result set.
+
+Preserve rejected-candidate reasons for audit and explainability.
+
+Return diverse candidates; do not show many near-identical sequences just to fill a list.
+
+Record the intermediate calculation trace: eligible crop set, excluded choices and reasons, transition checks, component values and tie-break decisions.
+
+8.7 Dry / typical / wet stress testing
+
+Where a sufficiently long historical annual/seasonal series exists, choose dry, typical and wet cases using documented quantiles or selection criteria. Apply the same crop/water model and assumptions to each case. Store selected years/sample count, demand, available rainfall/irrigation, any deficit indicator, uncertainty and source.
+
+These are historical stress-test scenarios, not weather forecasts. If the historical series is too short, incomplete or temporally incompatible, mark the section unavailable or limited; do not manufacture a distribution.
+
+8.8 Confidence and missing evidence
+
+Keep separate concepts:
+
+Match/suitability: fit under the current inputs and preferences.
+
+Evidence coverage: which required/supporting inputs and sources are present.
+
+Evidence quality: freshness, source quality, spatial resolution, measurement method and uncertainty.
+
+Confidence: an interpretation of how strongly the evidence supports the result, only shown as a numeric score if a defined and validated method exists.
+
+Until a confidence formula has been validated, use clear labels such as Strong evidence, Some gaps, Limited evidence with reasons and a coverage list, rather than an invented percentage. Never let one composite figure conceal a missing soil test or a coarse regional grid.
+
+9. Final review before analysis
+
+The review screen is the farmer's last chance to correct the snapshot before it is used. In Simple Mode, show a compact summary of the four core answers, the disclosed horizon default, retrieved evidence and material limitations. Keep unasked advanced fields collapsed; do not render empty rows for the entire question library.
+
+9.1 Review groups
+
+In Simple Mode, display only groups that have answers or materially relevant evidence. Advanced Mode may reveal the full groups below:
+
+1. Farm & Field
+
+2. Location & Boundary
+
+3. Soil & Land
+
+4. Water & Irrigation
+
+5. Crop History & Current Crop
+
+6. Planning Horizon
+
+7. Crop Requirements & Exclusions
+
+8. Management Practices
+
+9. Priorities & Risk
+
+10. External Data Retrieved
+
+11. Missing Information & Limitations
+
+9.2 Required row fields
+
+Every answer row shows:
+
+question/attribute label;
+
+current value and unit;
+
+field/season scope;
+
+origin/source badge: You provided, Farmer-confirmed, Dataset estimate, Lab result, Derived, Skipped, Unknown, AI-interpreted — needs confirmation;
+
+observation/sample date and retrieval/confirmation date where applicable;
+
+Edit action;
+
+warning if the value is stale, invalid, approximate or spatially coarse.
+
+9.3 Missing-data summary
+
+Group gaps by impact:
+
+Blocks calculation: invalid or missing input required for a hard feasibility decision or required consent.
+
+Reduces coverage: useful optional input absent, but a first-pass assessment can continue.
+
+Not applicable: the question does not apply to this field system.
+
+Source unavailable: provider did not return data or integration is not active.
+
+Needs farmer confirmation: auto-suggested value has not been accepted.
+
+Do not use alarming language for a normal unknown. Explain what decision it limits and how the farmer could add the information later.
+
+9.4 Explicit continue choice
+
+The farmer chooses one of:
+
+Save profile and exit;
+
+Save draft;
+
+Use current information and continue (passes the immutable Simple Mode questionnaire/evidence snapshot reference).
+
+Answer a few optional questions (opens only the highest-value conditional follow-ups, then returns to the compact review).
+
+The route handoff must pass stable farmId, fieldId, questionnaireId, inputSnapshotId, inputVersion, sourceCoverageId and analysisRequestId references. The Crop Rotation Planner route owns its subsequent workflow. This document does not define that route's content or layout.
+
+10. Live analysis loading screen and truthful activity log
+
+The loading screen is a major trust feature. It must show the work being performed in real time. It must not simulate a fixed countdown, invent provider calls, or pretend that a model is thinking when the backend has not emitted an event.
+
+10.1 Visual composition
+
+Full-page #07130C canvas.
+
+Central glass panel with --fs-glass-strong or --fs-glass-default, 16px radius, 14px backdrop blur and 12% subtle border.
+
+At top: field name, farm, request/job ID in Advanced Mode, current stage title and elapsed timer.
+
+Beneath: a compact stage rail showing pending, active, completed, partial and failed states with text/icon, not colour alone.
+
+Main region: an expanding activity tree/timeline. Each new task is inserted as a child beneath its owning stage; as more operations happen, the scrollable activity region grows downward. Keep the newest active event visible without forcing the whole page to jump.
+
+Right-side/expandable Sources & data area lists only providers actually contacted or cache entries actually used, their status and how they affect coverage.
+
+A What this means line explains the current operation in everyday language.
+
+Bottom actions: Cancel analysis when cancellation is supported; Continue in background only if the backend job genuinely persists and the UI can reopen it.
+
+10.2 What the timer says
+
+When a stage starts, store a backend startedAt timestamp. The displayed timer counts elapsed time since that timestamp (e.g. Validating field data · 00:01, 00:02, 00:03). When the stage-complete event arrives, freeze that duration and append a completed row such as Field and input validation completed · 4.2 seconds.
+
+The next stage starts its own timer. The previous duration remains visible as a completed activity. At the end, show the actual recorded duration for each stage and total run time.
+
+Do not make a front-end timer decide when a stage completes. The frontend may render a one-second ticking elapsed display from the backend's startedAt, but status changes only arrive from the job system.
+
+10.3 Activity wording: operations, not hidden chain-of-thought
+
+It is acceptable to tell the farmer that the system is validating inputs, fetching weather, checking crop constraints or evaluating candidate sequences. Do not expose private internal chain-of-thought or fabricate an LLM's hidden reasoning as a transcript. Use concise, auditable work summaries such as:
+
+Checking the field location and saved profile;
+
+Fetching current weather from Open-Meteo;
+
+Retrieving historical climate data from NASA POWER;
+
+Checking whether the field has enough valid soil evidence;
+
+Calculating growing-degree-day features;
+
+Estimating water demand from supported weather and crop inputs;
+
+Checking crop-family return intervals;
+
+Testing planting-window feasibility;
+
+Evaluating 84 candidate sequences (only if the engine actually evaluated 84);
+
+Comparing water and soil trade-offs;
+
+Preparing the evidence summary;
+
+Saving the verified input and calculation snapshot.
+
+Avoid the raw phrase Thought for 20 seconds as though hidden thoughts are being exposed. If an AI text-generation call is made, label the operation Preparing the farmer-facing explanation and report its real elapsed duration. The activity log should show observable operations and concise rationales, not private reasoning tokens.
+
+10.4 Hierarchical event example
+
+The activity panel may grow like this (illustrative labels only; actual entries depend on the real run):
+
+Rotation assessment started                         00:00
+
+├─ Validate farmer inputs                            00:04 complete
+
+│  ├─ Check farm and field IDs                       0.2 s
+
+│  ├─ Validate field coordinates                     0.1 s
+
+│  └─ Check crop history and required fields         0.4 s
+
+├─ Retrieve external evidence                        00:04–00:11
+
+│  ├─ Open-Meteo current/forecast                     2.1 s  success
+
+│  ├─ NASA POWER daily climate                       3.0 s  success
+
+│  └─ Soil dataset                                   skipped — connector not active
+
+├─ Prepare climate and water inputs                  00:11–00:13
+
+│  ├─ Normalize temperature and rainfall units       0.1 s
+
+│  ├─ Calculate supported GDD features               0.3 s
+
+│  └─ Water model                                    partial — irrigation amount unknown
+
+├─ Generate and screen candidate sequences           00:13–00:16
+
+│  ├─ Apply hard crop constraints                    0.2 s
+
+│  ├─ Evaluate feasible transitions                  1.2 s
+
+│  └─ Rank valid sequences                            0.5 s
+
+└─ Evaluate evidence and save run                    00:16–00:18
+
+   ├─ Build evidence coverage                         0.2 s
+
+   ├─ Prepare explanation                             0.8 s
+
+   └─ Persist report snapshot                         0.3 s
+
+This is a shape example only. It must never be seeded as fixed progress. Source names, counts, status and duration are populated from real events and telemetry.
+
+10.5 Stage lifecycle
+
+Supported stage states:
+
+pending — not started;
+
+running — backend stage is active;
+
+complete — stage completed successfully;
+
+partial — stage completed with a known limitation;
+
+skipped — stage was not required or source not configured;
+
+failed — stage failed;
+
+cancelled — cancellation was acknowledged;
+
+retrying — transient failure is being retried.
+
+The overall job state is one of queued, running, complete, partial, failed, retrying, cancelled or skipped. A completed job may contain a partial optional source, but a required calculation failure cannot be labelled complete.
+
+10.6 Honest progress and percentage rules
+
+Use named stages and real child operations as the primary progress indicator.
+
+Do not show 73% complete unless stage weights are defensible and actual stage work can be measured.
+
+Do not predict remaining time with fake precision.
+
+If a provider responds from cache, display Using cached data from [provider] and the age of the cache, not Fetched from provider.
+
+Count network calls only when calls actually occur. If two sources were contacted, show two. If one failed, show its failure; do not suppress it.
+
+If a provider is not configured, show Not connected / not requested, not a fake zero-second success.
+
+If an optional source fails, continue only when the remaining evidence supports a useful partial result.
+
+10.7 Event delivery
+
+Use Server-Sent Events (SSE) for one-way live job updates where appropriate; documented polling is an acceptable fallback. The job must remain valid if the browser refreshes or disconnects. On reconnect, request events from the last event ID or fetch the full current job snapshot and append missed events.
+
+The backend should emit structured progress events containing:
+
+jobId, eventId, stageKey, parentEventId;
+
+safe display label and optional explanatory sentence;
+
+state, startedAt, completedAt, durationMs;
+
+sourceId or calculation key when relevant;
+
+attempt number, cache status and retry metadata;
+
+safe error code and farmer-safe message if needed;
+
+timestamp and correlation ID.
+
+Never include API keys, private prompts, stack traces or unnecessary exact coordinates in user-visible events.
+
+11. Backend architecture and API contracts
+
+The questionnaire UI must be thin. It stores answers and renders state; server-side services own canonical validation, source retrieval, job execution, agronomic calculations, provenance and persistence.
+
+11.1 Required backend modules
+
+1. Questionnaire schema service: serves versioned questions, answer options, branch rules and validation schemas.
+
+2. Draft/profile service: creates, loads, autosaves and versions farm/field questionnaire answers.
+
+3. Location service: geocoding adapter, timezone/elevation resolution and polygon validation/area calculation.
+
+4. Consent/privacy service: records explicit remote-data consent and the scope of information permitted to leave local storage.
+
+5. Connector registry: configured providers, real health state, capabilities, supported variables and terms/attribution metadata.
+
+6. Provider adapters: Open-Meteo, NASA POWER and optional soil/vegetation/terrain connectors; each maps to a canonical observation format.
+
+7. Data-quality service: unit/date normalization, missing-value handling, range checks, quality flags and spatial/temporal coverage.
+
+8. Climate feature service: GDD, rainfall totals, heat/frost exposure and dry-spell metrics where supportable.
+
+9. Water feature service: ET0/ETc and water-balance features only when required inputs exist.
+
+10. Crop knowledge service: versioned crop parameters, crop families, disease-host rules and references.
+
+11. Rotation assessment engine: deterministic feasibility, candidate search, scoring, trade-off and uncertainty calculations.
+
+12. Job orchestration service: queue, retries, cancellation, stage events, idempotency and result status.
+
+13. Snapshot/report service: immutable input/evidence/calculation records and reproducible IDs.
+
+14. Audit/observability service: correlation IDs, durations, source outcomes and protected logs.
+
+11.2 Suggested API surface
+
+Exact URL naming may fit the existing backend, but equivalent operations and contracts are required.
+
+Operation
+
+Method / path (suggested)
+
+Purpose
+
+Get questionnaire schema
+
+GET /api/questionnaires/rotation/v{version}
+
+Load versioned question tree
+
+Create draft
+
+POST /api/rotation-questionnaires
+
+Create unique blank draft
+
+Read draft
+
+GET /api/rotation-questionnaires/{id}
+
+Resume draft
+
+Save answer
+
+PUT /api/rotation-questionnaires/{id}/answers/{questionId}
+
+Validate and persist answer
+
+Review snapshot
+
+POST /api/rotation-questionnaires/{id}/review
+
+Validate and create snapshot
+
+Search location
+
+GET /api/locations/search?q=...
+
+Server-side geocoding proxy/adapter
+
+Validate boundary
+
+POST /api/fields/{fieldId}/geometry/validate
+
+Validate polygon and area
+
+Submit assessment
+
+POST /api/rotation-assessments
+
+Create long-running job and return job ID
+
+Read job
+
+GET /api/rotation-assessments/{jobId}
+
+Current status and stage snapshot
+
+Stream events
+
+GET /api/rotation-assessments/{jobId}/events
+
+SSE live event stream
+
+Cancel job
+
+POST /api/rotation-assessments/{jobId}/cancel
+
+Request best-effort cancellation
+
+Read input snapshot
+
+GET /api/rotation-input-snapshots/{snapshotId}
+
+Retrieve immutable source/answer package
+
+All writes need authorization, input validation, optimistic concurrency where edits can conflict, and idempotency for job creation. Use structured errors with an opaque correlation ID and farmer-safe message.
+
+11.3 Submit-assessment request (example contract)
+
+{
+
+  "questionnaireId": "qst_opaque_id",
+
+  "inputSnapshotId": "snap_opaque_id",
+
+  "farmId": "farm_opaque_id",
+
+  "fieldId": "field_opaque_id",
+
+  "inputVersion": 7,
+
+  "consentId": "consent_opaque_id",
+
+  "sourcePolicy": "approved_sources_only",
+
+  "idempotencyKey": "client-generated-stable-key"
+
+}
+
+The server must load the referenced snapshot and verify it belongs to the authenticated user. Do not trust arbitrary userId, farm ID, field ID or coordinates sent by the client without authorization and ownership checks.
+
+11.4 Job and event persistence
+
+Persist at least:
+
+job ID, user/scope, questionnaire/snapshot IDs, created/started/completed times;
+
+overall state, current stage, attempt count and idempotency key;
+
+each stage/event with parent relationship, state, start/end/duration and safe details;
+
+source call records (provider/product/variable/date range/cache status/latency/status/error code);
+
+calculation/model versions and candidate search metadata;
+
+input/evidence snapshot reference and result/report ID;
+
+cancellation/retry information.
+
+The current audit snapshot's localStorage and timer-only progress are not sufficient for durable jobs. Use persistent storage and a durable worker/queue (or an equivalent job runner) for work that must survive browser closure. Local-only drafts can remain supported, but the user must know when the assessment itself requires server processing and remote data retrieval.
+
+11.5 Retry, timeout and duplicate protection
+
+Set connection/read timeouts per provider and per stage.
+
+Retry only transient network/server/rate-limit failures with bounded exponential backoff and jitter.
+
+Do not retry invalid requests, unauthorized calls or unavailable products indefinitely.
+
+Honor provider rate limits and cache by source, native grid cell, variable/product, time window and version.
+
+Idempotency key prevents duplicate jobs when the farmer double-clicks, refreshes or retries after connection loss.
+
+Cancellation records whether work stopped or the result was simply ignored by the client.
+
+A repeated Run request for the same active job should reopen that job instead of spawning duplicates.
+
+11.6 Privacy and security
+
+Remote data retrieval is opt-in and the consent copy identifies what leaves the device (coordinates/geometry where needed, field inputs, selected management context and source request metadata).
+
+Do not transmit the full farm profile if the provider only needs coordinates and dates.
+
+API credentials/secrets remain server-side.
+
+Do not log exact private farm coordinates, raw farmer notes, credentials or private AI prompt content unless specifically necessary, protected and retention-limited.
+
+Enforce user/farm/field ownership on every read/write/job/event endpoint.
+
+Revoke consent by stopping future remote jobs and applying the stated retention/deletion policy to remote snapshots.
+
+12. Error handling and partial-success behavior
+
+The questionnaire and analysis must remain understandable when data is incomplete.
+
+12.1 Error classes
+
+Invalid answer / unit / geometry;
+
+location not found or ambiguous;
+
+browser location permission denied;
+
+external data source unavailable or rate-limited;
+
+source response invalid or missing variable;
+
+source too coarse or too stale for the metric;
+
+crop knowledge parameter missing;
+
+required agronomic constraint cannot be evaluated;
+
+no candidate sequence passes hard constraints;
+
+persistence/job failure;
+
+consent revoked or authorization denied;
+
+user cancellation.
+
+12.2 Farmer-facing behavior
+
+Keep the answer draft and identify the exact field to fix.
+
+Offer a retry only when the error is retryable.
+
+Preserve the last valid saved profile when a new save fails.
+
+Preserve the prior successful assessment when a refresh fails.
+
+A failed optional source may produce a partial assessment; name the affected source and metrics.
+
+A required source/calculation failure blocks only the dependent result, not unrelated questionnaire answers.
+
+If no candidate meets hard constraints, state that no feasible plan was found under current confirmed inputs and list the constraints that caused it. Do not force a recommendation.
+
+12.3 Partial assessment record
+
+A partial result must store:
+
+successful sources and variables;
+
+failed/unavailable/skipped sources and reasons;
+
+calculations that ran and their input coverage;
+
+calculations not run and the missing prerequisite;
+
+confidence/coverage limitations;
+
+whether the result is safe to use as a provisional assessment or must be blocked.
+
+13. Cross-page linkage (handoff only; not page design)
+
+The questionnaire belongs to the Crop Rotation Planner workflow. Its job ends when the farmer saves the profile or confirms the input snapshot and chooses to continue.
+
+The handoff payload must preserve:
+
+farmId and fieldId;
+
+questionnaireId and questionnaireSchemaVersion;
+
+inputSnapshotId and inputVersion;
+
+geometryVersion and locationVersion;
+
+sourceCoverageId and observation snapshot references;
+
+cropKnowledgeVersion and calculation-engine version requested;
+
+consentId and data policy;
+
+the farmer's priority vector and confirmed constraints.
+
+The downstream Rotation Planner must consume this immutable snapshot and must not quietly re-read a different field or replace it with another farm's answers. If the farmer changes an input later, create a new input version and mark dependent results stale. The downstream route's UI, cards, scoring display, timeline and comparison experience are explicitly outside the scope of this document.
+
+14. Testing and acceptance criteria
+
+No questionnaire or backend stage is complete merely because its visual control renders.
+
+14.1 Question-flow tests
+
+Create mode produces unique farm/field/questionnaire IDs and does not inherit another field's history.
+
+Edit mode reloads the correct field and preserves its old snapshot.
+
+Back navigation preserves answers and branch selections.
+
+Refresh resumes at the correct question with saved answers.
+
+Optional unknowns/skips do not block review.
+
+Required missing answers route to the first missing step.
+
+Branch changes add/remove only the relevant questions and update progress honestly.
+
+Farm-level practices are not copied into fields without confirmation.
+
+Current crop is never inferred from a candidate rotation.
+
+Fallow and cover crop remain different values.
+
+All numeric values require compatible units and reject malformed input without silent clamping.
+
+An invalid polygon blocks geometry save but need not block unrelated profile draft save if geometry is optional.
+
+Save failures do not show a false Draft saved message.
+
+A first-time user starts in Simple Mode and sees no more than four core steps before the optional accuracy choice.
+
+Existing farm/field data is prefilled and skipped rather than asked again.
+
+Declining optional accuracy questions still allows the first-pass assessment to continue.
+
+The first optional refinement pass contains no more than three high-impact follow-ups and can be stopped or skipped.
+
+Simple Mode progress reflects only the active simple flow (for example, Step 2 of 4); it never exposes the full advanced question count.
+
+14.2 Location/data tests
+
+Geocoding ambiguity requires farmer selection.
+
+Browser location permission denial offers manual search/pin.
+
+IP location is never accepted as confirmed farm location.
+
+Location point and field polygon are stored separately.
+
+Polygon area is not computed in unprojected degrees.
+
+Coarse data grids are not presented as field-level measurement when field size/resolution do not support that claim.
+
+NASA POWER monthly output is not treated as daily history.
+
+Open-Meteo current/forecast is distinct from historical reanalysis.
+
+Source labels match the actual provider/product requested.
+
+A planned or unavailable provider never displays Connected.
+
+Cache hits are not counted as live network fetches.
+
+API failures and source quality flags are visible and persisted.
+
+14.3 Scientific calculation tests
+
+GDD uses documented crop thresholds/caps and the correct daily series.
+
+ET0 method is named correctly; no FAO-56 claim for a simplified proxy.
+
+ETc requires supported Kc/stage and valid ET0 inputs.
+
+Effective rainfall is not automatically equal to raw precipitation.
+
+Irrigation routine is not treated as actual irrigation event.
+
+Water balance requires declared time step, units, storage basis and included terms.
+
+Unknown soil properties are not assigned ideal values.
+
+Mapped soil estimates remain distinct from lab results.
+
+Crop-family/disease constraints use verified crop knowledge only.
+
+Hard constraints execute before weighted ranking.
+
+Preference changes alter ranking weights, not weather/soil observations or feasibility.
+
+Same normalized input + engine/crop-library versions reproduce the same candidate ranking.
+
+Candidate set is diverse and deterministic.
+
+No feasible candidate returns explicit reasons rather than a fabricated plan.
+
+Score is not labelled as yield chance or probability.
+
+Confidence remains separate from match.
+
+Dry/typical/wet stress tests use documented historical quantiles and never pretend to be forecasts.
+
+14.4 Loading/progress tests
+
+The active timer starts from a real backend startedAt event.
+
+Completed stage duration freezes on the real completion event.
+
+Stage text changes only on backend state updates.
+
+Nested child events appear under the correct parent stage.
+
+Source labels/counts exactly match actual provider requests/cache use.
+
+Failed/partial/skipped/retrying/cancelled events display correctly.
+
+Browser refresh/reconnect restores job state and missed events.
+
+Duplicate submit does not create duplicate jobs.
+
+No fixed fake percentage or made-up “thought for” duration appears.
+
+Job logs contain no secrets or unnecessary private location data.
+
+14.5 Backend and security tests
+
+Request/response DTOs validate on the server.
+
+Every endpoint enforces user/farm/field authorization.
+
+Job creation is idempotent.
+
+Transient failures retry within configured bounds; permanent errors do not loop.
+
+Worker restart preserves queued/running job state safely.
+
+Cancellation and consent revocation have explicit, testable outcomes.
+
+Concurrent edits use version/ETag conflict handling rather than silent overwrite.
+
+Immutable snapshots remain unchanged after profile edits or source refresh.
+
+14.6 UI and accessibility tests
+
+Validate at 1600, 1440, 1280, 1024, 768, 430, 390 and 360 CSS px. Check:
+
+question text, labels, units and errors are not clipped;
+
+no content overlaps and no horizontal page overflow occurs;
+
+glass surfaces maintain sufficient contrast over actual backgrounds;
+
+backdrop-filter fallback remains legible;
+
+touch targets are at least 44×44px;
+
+keyboard focus is visible and control names are accessible;
+
+screen reader announces question, required/optional state, validation and save status;
+
+reduced-motion preference works;
+
+selection is never conveyed by colour alone.
+
+15. Implementation order and completion gates
+
+Phase 1 — Questionnaire correctness
+
+Implement the versioned question schema and branch engine.
+
+Implement create/edit draft flows, per-field profiles and autosave.
+
+Implement location point and field polygon as separate records.
+
+Implement farmer-provided data provenance and review.
+
+Implement custom/preset priorities and explicit unknown states.
+
+Gate: all question-flow tests pass; draft refresh and branch changes preserve correct answers.
+
+Phase 2 — Real location and weather integrations
+
+Implement server-side geocoding adapter and confirmed location flow.
+
+Verify current Open-Meteo connector and add explicit forecast/historical calls as needed.
+
+Upgrade/verify NASA POWER daily retrieval where needed; do not assume monthly climate covers daily calculations.
+
+Add provider registry/coverage UI and source-quality metadata.
+
+Gate: live smoke tests prove actual requests and source metadata; current vs forecast vs historical series are separated.
+
+Phase 3 — Optional soil, water and satellite evidence
+
+Add only verified soil/terrain/moisture/vegetation connectors.
+
+Record native resolution, time/depth semantics, quality flags and uncertainty.
+
+Handle paused/unavailable providers honestly.
+
+Add water calculations only after ET and management input prerequisites are validated.
+
+Gate: each metric has a registered definition and test; no source is displayed as active without a verified call.
+
+Phase 4 — Deterministic assessment and auditable progress
+
+Implement typed crop knowledge and pure calculation functions.
+
+Implement hard constraints, normalized preferences, deterministic candidate search and intermediate traces.
+
+Implement durable job orchestration, event persistence, SSE/polling and accurate elapsed timers.
+
+Persist immutable snapshots and source/calc versions.
+
+Gate: same inputs reproduce; job events match real work; partial/failure handling works.
+
+Phase 5 — Quality and production readiness
+
+Run visual viewport checks and accessibility tests.
+
+Run build, type-check, unit, integration, end-to-end and API smoke tests.
+
+Test privacy consent, ownership, retries, cancellation, retention and logs.
+
+Produce a completion report listing complete, partial, blocked and unverified items.
+
+Gate: do not claim completion until the real target environment passes the build and tests. A beautiful questionnaire with simulated evidence or fake progress is not complete.
+
+16. Non-negotiable “never do this” list
+
+1. Never use IP geolocation as a confirmed field location.
+
+2. Never confuse a location pin with a field boundary.
+
+3. Never present coarse regional/grid data as an exact field measurement.
+
+4. Never label a mapped soil prediction as a lab test.
+
+5. Never call reanalysis a local weather-station observation.
+
+6. Never call a monthly climate average daily weather history.
+
+7. Never manufacture NDVI or soil moisture from unrelated variables.
+
+8. Never use an API name/badge as proof the integration is live.
+
+9. Never claim a forecast was retrieved if only historical data was fetched.
+
+10. Never treat an irrigation routine as proof of actual water applied.
+
+11. Never infer that a recommended crop is currently planted.
+
+12. Never merge fallow and cover crop into one category.
+
+13. Never turn unknown values into ideal values.
+
+14. Never let preference weights bypass hard agronomic feasibility.
+
+15. Never call a match score a yield percentage or success probability.
+
+16. Never combine confidence and suitability into one unexplained score.
+
+17. Never claim FAO-56 when the required-input method is not implemented.
+
+18. Never fabricate candidate counts, source counts, progress percentages or elapsed stage durations.
+
+19. Never show hidden chain-of-thought as a transcript; show real operations and concise rationale summaries.
+
+20. Never mark a job complete before the calculation and snapshot persistence have actually completed.
+
+21. Never overwrite an immutable historical input/source snapshot.
+
+22. Never display “saved”, “connected”, “complete” or “deleted” before the corresponding operation is acknowledged.
+
+17. Official technical references
+
+The product's v8 master plan remains the primary source for Field Shift-specific requirements. The following public documentation is included to guide live connector implementation and must be rechecked at implementation/deployment time for endpoint changes, terms, parameter availability and rate limits.
+
+Open-Meteo Geocoding API: https://open-meteo.com/en/docs/geocoding-api — place search returns coordinate and administrative metadata, including timezone/elevation where available.
+
+Open-Meteo Forecast API: https://open-meteo.com/en/docs — current, hourly and daily weather variables; forecast horizon and model coverage must be displayed honestly.
+
+Open-Meteo Historical Weather API: https://open-meteo.com/en/docs/historical-weather-api — coordinate and date-based historical reanalysis endpoint; retain the model/reanalysis provenance.
+
+NASA POWER Daily API: https://power.larc.nasa.gov/docs/services/api/temporal/daily/ — daily meteorological/solar data, time-standard options and spatial/parameter limits.
+
+NASA POWER Temporal APIs: https://power.larc.nasa.gov/docs/services/api/temporal/ — clarifies differences between climatology, monthly, daily and hourly services.
+
+ISRIC SoilGrids: https://isric.org/explore/soilgrids — as checked on 15 November 2026, the official page reports its REST API is temporarily paused; do not build a critical live dependency until a verified access route is available.
+
+SoilGrids REST entry page: https://dev-rest.isric.org/ — API status, beta/service caveats and fair-use information; recheck before calling.
+
+18. Final instruction to the implementation builder
+
+Build the questionnaire as a complete evidence-capture and decision-input system, not as a decorative form. Simple Mode is the default and must contain only four short first-run steps. The full question catalogue is a conditional/advanced library, not a mandatory checklist. End the basic flow with an optional accuracy choice and ask only a few high-impact questions when the farmer opts in. Preserve the Field Shift v8 requirements, implement the branch rules and canonical records, verify every data provider, use sourced and tested agronomic parameters, and emit real backend progress events. The farmer must always be able to see what they entered, what the system suggested, where external values came from, which calculations are supported, what remains unknown and why the final input snapshot is suitable or limited.
+
+FIELD SHIFT  •  IMPLEMENTATION SPECIFICATION  •  
